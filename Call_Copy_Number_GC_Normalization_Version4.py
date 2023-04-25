@@ -17,6 +17,7 @@ def get_args():
   parser.add_argument("-ngcn")
   parser.add_argument("-ID")
   parser.add_argument("-gcn")
+  parser.add_argument("-nnfgcn")
   return parser.parse_args()
 
 def takeSecond(elem):
@@ -37,6 +38,7 @@ else:
 norm_gcn = args.ngcn
 ID = args.ID
 gcn= args.gcn
+norm_nfgcn = args.nnfgcn
 
 counts_list = []
 kmer_list = []
@@ -134,6 +136,21 @@ with open(norm_gcn) as ngcn:
 norm_counts_adj = Counter()
 for item in norm_counts_dic:
     norm_counts_adj[item] = float(norm_counts_dic[item]/norm_gcn_dic[item])
+
+norm_nfgcn_dic = Counter()
+with open(norm_nfgcn) as fil:
+    while True:
+        l1 = fil.readline().strip()
+        kmer = fil.readline().strip()
+        if l1 == "":
+            break
+        regex = re.search(r'\>([\S]+)',l1)
+        count = int(regex.group(1))
+        norm_nfgcn_dic[kmer] += count
+
+for kmer in norm_counts_adj.copy():
+    if norm_nfgcn_dic[kmer] > 0:
+        del norm_counts_adj[kmer]
 
 print("The mean normalization set count")
 print(statistics.mean(list(norm_counts_adj.values())))

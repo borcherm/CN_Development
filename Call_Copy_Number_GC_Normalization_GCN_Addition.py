@@ -17,6 +17,7 @@ def get_args():
   parser.add_argument("-ngcn")
   parser.add_argument("-ID")
   parser.add_argument("-gcn")
+  parser.add_argument("-nfcn")
   return parser.parse_args()
 
 def takeSecond(elem):
@@ -37,6 +38,7 @@ else:
 norm_gcn = args.ngcn
 ID = args.ID
 gcn= args.gcn
+non_feature_cn = args.nfcn
 
 counts_list = []
 kmer_list = []
@@ -66,10 +68,9 @@ if counts_r2 is not False:
                 kmer_dic[kmer] = kmer_dic[kmer] + count
             else:
                 kmer_dic[kmer] = count
-#kmer_list.sort(key=takeSecond, reverse=True)
-#print(kmer_list[0:100])
-#print(kmer_list[-100:])
 
+
+#these are counts for each kmer within the feature of interest in the reference
 with open(gcn, "r+") as fh:
     genomic_copy_number_dic = {}
     while True:
@@ -81,22 +82,18 @@ with open(gcn, "r+") as fh:
         count = int(regex.group(1))
         genomic_copy_number_dic[kmer] = count
 
+#these are counts for each kmer within the genome but occuring outside the feature of interest
+with open(non_feature_cn, "r+") as fh:
+    non_feature_genomic_copy_number_dic = {}
+    while True:
+        l1 = fh.readline().strip()
+        kmer = fh.readline().strip()
+        if l1 == "":
+            break
+        regex = re.search(r'\>([\S]+)',l1)
+        count = int(regex.group(1))
+        non_feature_genomic_copy_number_dic[kmer] = count
 
-genomic_cn_normalized_counts_dic = {}
-genomic_cn_normalized_counts_list = []
-for kmer in kmer_dic:
-    genomic_cn_normalized_counts_dic[kmer] = kmer_dic[kmer]/genomic_copy_number_dic[kmer]
-    genomic_cn_normalized_counts_list.append(genomic_cn_normalized_counts_dic[kmer])
-
-print(genomic_cn_normalized_counts_dic)
-
-#find median
-median = int(statistics.median_low(genomic_cn_normalized_counts_list))
-print("The median genomic cn adjusted feature kmer counts")
-print(median)
-mean = int(statistics.mean(genomic_cn_normalized_counts_list))
-print("The mean genomic cn adjusted feature kmer counts")
-print(mean)
 
 norm_counts_dic = Counter()
 with open(norm_counts1, "r+") as norm1:
@@ -135,12 +132,33 @@ norm_counts_adj = Counter()
 for item in norm_counts_dic:
     norm_counts_adj[item] = float(norm_counts_dic[item]/norm_gcn_dic[item])
 
-print("The mean normalization set count")
-print(statistics.mean(list(norm_counts_adj.values())))
+
 norm_median = statistics.median(list(norm_counts_adj.values()))
-print("The median normalization set count")
 print(norm_median)
 diploid_norm_median = norm_median/2
+
+
+#Here the norm median is a stand in for sequencing depth. It gives an estimate of the
+#number of times we would expect to see a single kmer, so if we multiply the non feature CNs by it
+#we can adjust the counts to account for non-unique kmers of the feature.
+genomic_cn_normalized_counts_dic = {}
+genomic_cn_normalized_counts_list = []
+for kmer in kmer_dic:
+    kmer_dic[kmer] = kmer_dic[kmer] - (norm_median * non_feature_genomic_copy_number_dic[kmer])
+    genomic_cn_normalized_counts_dic[kmer] = kmer_dic[kmer]/genomic_copy_number_dic[kmer]
+    genomic_cn_normalized_counts_list.append(genomic_cn_normalized_counts_dic[kmer])
+
+print(genomic_cn_normalized_counts_dic)
+
+#find median
+median = int(statistics.median_low(genomic_cn_normalized_counts_list))
+print(median)
+
+mean = int(statistics.mean(genomic_cn_normalized_counts_list))
+print(mean)
+
+
+
 
 ribosome_copy_number = median/norm_median
 print("Median Copy Number" + "\n")

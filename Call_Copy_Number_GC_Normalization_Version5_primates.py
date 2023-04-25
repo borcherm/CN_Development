@@ -9,7 +9,7 @@ import gzip
 from collections import Counter
 
 def get_args():
-  parser = argparse.ArgumentParser(description="Find kmers that uniquely define a satellite array in a genome")
+  parser = argparse.ArgumentParser(description="Find copy number of a feature in WGS data with pre-counted kmer multiplicities in the feature and a normalization set")
   parser.add_argument("-r1")
   parser.add_argument("-r2", required = False)
   parser.add_argument("-nc1")
@@ -133,7 +133,11 @@ with open(norm_gcn) as ngcn:
 
 norm_counts_adj = Counter()
 for item in norm_counts_dic:
+    print(item)
+    print(norm_counts_dic[item])
+    print(norm_gcn_dic[item])
     norm_counts_adj[item] = float(norm_counts_dic[item]/norm_gcn_dic[item])
+
 
 print("The mean normalization set count")
 print(statistics.mean(list(norm_counts_adj.values())))

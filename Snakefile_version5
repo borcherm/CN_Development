@@ -1,0 +1,113 @@
+""""Snakefile for Counting rDNA Copy Number"""
+
+# this is where the config file lives
+configfile: "config.yml"
+
+import re
+import os
+
+
+
+
+# rule match_gc:
+#     input:
+#         rdna_fa = "../rdna/KY962518_18s.fa"
+#     output:
+#         match_gcn = "../jeg15/method_improvement_9_28_2022/matched_windows_subset.fa"
+#     run:
+#         shell("python ../code/Identify_GC_matched_regions.py -roi ../rdna/KY962518_18s.fa -rbed ../rdna/rdna_v1.1.bed -assembly ../chm13_assembly/v1.1/chm13_singleline.draft_v1.1.fasta -chr target_chrms.txt")
+#         shell("bedtools getfasta -fi ../chm13_assembly/v1.1/chm13.draft_v1.1.fasta -bed matched_windows_subset.bed -fo matched_windows_subset.fa")
+
+
+rule kmerize_rdna:
+    input:
+        rdna = "rdna/KY962518_18s.fa"
+    params:
+        k = config["K"]
+    output:
+        gcn = expand("rdna/KY962518_18s_k{k}_cn.fa",k=config["K"])
+    run:
+        for k in params.k:
+            shell("jellyfish count -m {k} -s 100M -t 5 -C -o rdna/KY962518_18s_k{k}_cn.jf rdna/KY962518_18s.fa")
+            shell("jellyfish dump rdna/KY962518_18s_k{k}_cn.jf > rdna/KY962518_18s_k{k}_cn.fa")
+
+rule uniq_kmerize_matched_windows:
+    input:
+        ng = "matched_windows/matched_windows_subset.fa"
+    params:
+        k = config["K"]
+    output:
+        ngcn = expand("matched_windows/matched_windows_subset_fcn_unique_{k}mers.fa",k=config["K"])
+    run:
+        for k in params.k:
+            shell("jellyfish count -m {k} -s 100M -C -t 10 -o matched_windows_subset_nfcn_{k}mers.jf --if matched_windows/matched_windows_subset.fa matched_windows/all_but_matched_windows_subset.fa")
+            shell("jellyfish dump -o matched_windows_subset_nfcn_{k}mers.fa matched_windows_subset_nfcn_{k}mers.jf")
+            shell("grep -A1 -w '>0' matched_windows_subset_nfcn_{k}mers.fa > matched_windows_subset_unique_{k}mers.fa")
+            shell("grep -v '\-' matched_windows_subset_unique_{k}mers.fa > matched_windows_subset_unique_{k}mers.fa1")
+            shell("rm matched_windows_subset_unique_{k}mers.fa")
+            shell("mv matched_windows_subset_unique_{k}mers.fa1 matched_windows_subset_unique_{k}mers.fa")
+            shell("jellyfish count -m {k} -s 100M -C -t 10 -o matched_windows_subset_fcn_unique_{k}mers.jf --if matched_windows_subset_unique_{k}mers.fa matched_windows/matched_windows_subset.fa")
+            shell("jellyfish dump -o matched_windows_subset_fcn_unique_{k}mers.fa matched_windows_subset_fcn_unique_{k}mers.jf")
+            shell("mv matched_windows_subset*{k}mers.fa matched_windows/")
+            shell("mv matched_windows_subset_* matched_windows/")
+
+
+
+rule hg002_cn:
+    input:
+        ng = "matched_windows/matched_windows_subset.fa"
+    params:
+        baid = config["BAID"],
+        k = config["K"]
+    output:
+        hg002_CN = expand("results/Copy_Numbers_{baid}_k{k}.tsv",baid=config["BAID"],k=config["K"])
+    run:
+        for id in params.baid:
+            for k in params.k:
+                shell("zcat HG002/{id}.R1.fastq.gz | jellyfish count -m {k} -s 100M -C -t 10 -o {id}_k{k}_1.jf --if rdna/KY962518_18s.fa /dev/fd/0")
+                shell("zcat HG002/{id}.R2.fastq.gz | jellyfish count -m {k} -s 100M -C -t 10 -o {id}_k{k}_2.jf --if rdna/KY962518_18s.fa /dev/fd/0")
+                shell("jellyfish dump -o {id}_k{k}_1.fa {id}_k{k}_1.jf")
+                shell("jellyfish dump -o {id}_k{k}_2.fa {id}_k{k}_2.jf")
+                shell("mv {id}* jellyfish_files/")
+                shell("zcat HG002/{id}.R1.fastq.gz | jellyfish count -m {k} -s 100M -C -t 10 -o matched_gc_{id}_k{k}_1.jf --if matched_windows/matched_windows_subset_fcn_unique_{k}mers.fa /dev/fd/0")
+                shell("jellyfish dump -o matched_gc_{id}_k{k}_1.fa matched_gc_{id}_k{k}_1.jf")
+                shell("zcat HG002/{id}.R2.fastq.gz | jellyfish count -m {k} -s 100M -C -t 10 -o matched_gc_{id}_k{k}_2.jf --if matched_windows/matched_windows_subset_fcn_unique_{k}mers.fa /dev/fd/0")
+                shell("jellyfish dump -o matched_gc_{id}_k{k}_2.fa matched_gc_{id}_k{k}_2.jf")
+                shell("mv matched_gc_{id}* jellyfish_files/")
+                shell("python Call_Copy_Number_GC_Normalization_Version5_primates.py -r1 jellyfish_files/{id}_k{k}_1.fa -r2 jellyfish_files/{id}_k{k}_2.fa -nc1 jellyfish_files/matched_gc_{id}_k{k}_1.fa -nc2 jellyfish_files/matched_gc_{id}_k{k}_2.fa -ngcn matched_windows/matched_windows_subset_fcn_unique_{k}mers.fa -ID {id} -gcn rdna/KY962518_18s_k{k}_cn.fa")
+                shell("mv Copy_Numbers.tsv Copy_Numbers_{id}_k{k}.tsv")
+                shell("mv Copy_Numbers_{id}_k{k}.tsv results/")
+
+zip_list = ["HG02081","HG02082","HG02053","HG02054"]
+
+
+rule hprc_cn:
+    input:
+        match_gcn = expand("matched_windows/matched_windows_subset.fa")
+    params:
+        hprc = config["HPRC"],
+        k = config["K"]
+    output:
+        hprc_CN = expand("results/Copy_Numbers_{hprc}_k{k}.tsv",hprc=config["HPRC"],k=config["K"])
+    run:
+        for id in params.hprc:
+            for k in params.k:
+                if id in zip_list:
+                    shell("jellyfish count -m {k} -s 100M -C -t 10 -o {id}_k{k}_1.jf --if rdna/KY962518_18s.fa ../../jeg15/WGS_1KG_Families/{id}/{id}_2020_data_concatenated_1.fastq")
+                    shell("jellyfish count -m {k} -s 100M -C -t 10 -o {id}_k{k}_2.jf --if rdna/KY962518_18s.fa ../../jeg15/WGS_1KG_Families/{id}/{id}_2020_data_concatenated_2.fastq")
+                    shell("jellyfish count -m {k} -s 100M -C -t 10 -o matched_gc_{id}_k{k}_1.jf --if matched_windows/matched_windows_subset_fcn_unique_{k}mers.fa ../../jeg15/WGS_1KG_Families/{id}/{id}_2020_data_concatenated_1.fastq")
+                    shell("jellyfish count -m {k} -s 100M -C -t 10 -o matched_gc_{id}_k{k}_2.jf --if matched_windows/matched_windows_subset_fcn_unique_{k}mers.fa ../../jeg15/WGS_1KG_Families/{id}/{id}_2020_data_concatenated_2.fastq")
+                else:
+                    shell("zcat WGS/illumina_novaseq_WGS/{id}/{id}_1.fastq.gz | jellyfish count -m {k} -s 100M -C -t 10 -o {id}_k{k}_1.jf --if rdna/KY962518_18s.fa /dev/fd/0")
+                    shell("zcat WGS/illumina_novaseq_WGS/{id}/{id}_2.fastq.gz | jellyfish count -m {k} -s 100M -C -t 10 -o {id}_k{k}_2.jf --if rdna/KY962518_18s.fa /dev/fd/0")
+                    shell("zcat WGS/illumina_novaseq_WGS/{id}/{id}_1.fastq.gz | jellyfish count -m {k} -s 100M -C -t 10 -o matched_gc_{id}_k{k}_1.jf --if matched_windows/matched_windows_subset_fcn_unique_{k}mers.fa /dev/fd/0")
+                    shell("zcat WGS/illumina_novaseq_WGS/{id}/{id}_2.fastq.gz | jellyfish count -m {k} -s 100M -C -t 10 -o matched_gc_{id}_k{k}_2.jf --if matched_windows/matched_windows_subset_fcn_unique_{k}mers.fa /dev/fd/0")
+                shell("jellyfish dump -o {id}_k{k}_1.fa {id}_k{k}_1.jf")
+                shell("jellyfish dump -o {id}_k{k}_2.fa {id}_k{k}_2.jf")
+                shell("jellyfish dump -o matched_gc_{id}_k{k}_1.fa matched_gc_{id}_k{k}_1.jf")
+                shell("jellyfish dump -o matched_gc_{id}_k{k}_2.fa matched_gc_{id}_k{k}_2.jf")
+                shell("mv {id}* jellyfish_files/")
+                shell("mv matched_gc_{id}* jellyfish_files/")
+                shell("python Call_Copy_Number_GC_Normalization_Version5_primates.py -r1 jellyfish_files/{id}_k{k}_1.fa -r2 jellyfish_files/{id}_k{k}_2.fa -nc1 jellyfish_files/matched_gc_{id}_k{k}_1.fa -nc2 jellyfish_files/matched_gc_{id}_k{k}_2.fa -ngcn matched_windows/matched_windows_subset_fcn_unique_{k}mers.fa -ID {id} -gcn rdna/KY962518_18s_k{k}_cn.fa")
+                shell("mv Copy_Numbers.tsv Copy_Numbers_{id}_k{k}.tsv")
+                shell("mv Copy_Numbers_{id}_k{k}.tsv results/")
