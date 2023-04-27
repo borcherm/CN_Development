@@ -10,13 +10,13 @@ from collections import Counter
 
 def get_args():
   parser = argparse.ArgumentParser(description="Find copy number of a feature in WGS data with pre-counted kmer multiplicities in the feature and a normalization set")
-  parser.add_argument("-r1")
-  parser.add_argument("-r2", required = False)
-  parser.add_argument("-nc1")
-  parser.add_argument("-nc2", required = False)
-  parser.add_argument("-ngcn")
-  parser.add_argument("-ID")
-  parser.add_argument("-gcn")
+  parser.add_argument("-r1", help="A jellyfish counts fasta of kmers from the feature in the first WGS read (for paired and unpaired)")
+  parser.add_argument("-r2", required = False, help="A jellyfish counts fasta of kmers from the feature in the second WGS read (if paired)")
+  parser.add_argument("-nc1", help="A jellyfish counts fasta of kmers from the matched windows in the first WGS read (for paired and unpaired). Kmers have ideally been filtered for those unique to the matched window")
+  parser.add_argument("-nc2", required = False, help="A jellyfish counts fasta of kmers from the matched windows in the second WGS read (for paired). Kmers have ideally been filtered for those unique to the matched window")
+  parser.add_argument("-ngcn", help="A jellyfish counts file of kmers from the matched window, so counts are indicating the multiplicity of the kmers in the matched window.")
+  parser.add_argument("-ID", help="A sample ID to use in the output")
+  parser.add_argument("-gcn", help="A jellyfish counts file of kmers from the feature of interest, so counts are indicating the multiplicity of the kmers in the feature.")
   return parser.parse_args()
 
 def takeSecond(elem):
@@ -162,6 +162,13 @@ diploid_mean_copy_number = mean/diploid_norm_median
 print("Diploid Mean Copy Number:" + "\n")
 print(diploid_mean_copy_number)
 
-with open("Copy_Numbers.tsv", "a+") as summary:
-    #summary.write("Sample" + "\t" + "Median_Haploid_Copy_Number" + "\t" + "Median_Diploid_Copy_Numer" + "\t" + "Mean_Haploid_Copy_Number" + "\t" + "Mean_Diploid_Copy_Number" + "\n")
+exists = os.path.isfile("./Copy_Numbers.tsv")
+
+summary = open("Copy_Numbers.tsv","a+")
+
+if exists == False:
+    summary.write("Sample" + "\t" + "Median_Haploid_Copy_Number" + "\t" + "Median_Diploid_Copy_Numer" + "\t" + "Mean_Haploid_Copy_Number" + "\t" + "Mean_Diploid_Copy_Number" + "\n")
     summary.write(ID + "\t" +str(round(ribosome_copy_number)) + "\t" + str(round(diploid_ribosome_copy_number)) + "\t" + str(round(mean_copy_number)) + "\t" + str(round(diploid_mean_copy_number))+"\n")
+else:
+    summary.write(ID + "\t" +str(round(ribosome_copy_number)) + "\t" + str(round(diploid_ribosome_copy_number)) + "\t" + str(round(mean_copy_number)) + "\t" + str(round(diploid_mean_copy_number))+"\n")
+summary.close()
