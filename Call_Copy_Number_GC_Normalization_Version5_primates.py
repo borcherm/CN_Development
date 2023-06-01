@@ -6,6 +6,7 @@ import math
 import statistics
 import multiprocessing as mp
 import gzip
+import os
 from collections import Counter
 
 def get_args():
