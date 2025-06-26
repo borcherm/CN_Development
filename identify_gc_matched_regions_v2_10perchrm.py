@@ -133,7 +133,6 @@ outwin.close()
 #select a random subset of regions from this list to use for normalization
 window_subset = []
 
-random.seed(4)
 outfile = open("matched_windows_subset.bed","w+")
 if chrids != False:
     for chrm in chrID_list:
@@ -142,8 +141,8 @@ if chrids != False:
         for v in valid_window_list:
             if v[0] == chrm:
                 current_chr.append(v)
-        if len(current_chr) > 30:
-            while ranges_added < 30:
+        if len(current_chr) > 10:
+            while ranges_added < 10:
                 selection = random.choice(current_chr)
                 window_subset.append(selection)
                 ranges_added += 1
